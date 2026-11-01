@@ -32,9 +32,23 @@ interface RawQbitTorrent {
   num_leechs: number;
 }
 
+/**
+ * Extract the session cookie name/value from qBittorrent's Set-Cookie headers.
+ *
+ * qBittorrent 4.x uses `SID`; 5.x uses `QBT_SID_<webui-port>`. The name has to
+ * be preserved because the server expects the same one back.
+ */
+export function sessionCookie(setCookies: string[]): string {
+  for (const value of setCookies) {
+    const match = value.match(/((?:QBT_)?SID(?:_\d+)?)=([^;]+)/);
+    if (match) return `${match[1]}=${match[2]}`;
+  }
+  return "";
+}
+
 class QbitClient {
   private readonly config: QbitConfig;
-  private sid = "";
+  private cookie = "";
   private loginPromise: Promise<void> | null = null;
   private listCache: { at: number; value: QbitTorrent[] } | null = null;
 
@@ -67,8 +81,7 @@ class QbitClient {
       if (/fails/i.test(text)) throw new Error("qBittorrent rejected the username or password");
       const headers = response.headers as Headers & { getSetCookie?: () => string[] };
       const cookies = headers.getSetCookie?.() ?? [response.headers.get("set-cookie") ?? ""];
-      const sid = cookies.map((value) => value.match(/SID=([^;]+)/)?.[1]).find(Boolean);
-      this.sid = sid ?? "";
+      this.cookie = sessionCookie(cookies);
     })().finally(() => {
       this.loginPromise = null;
     });
@@ -76,17 +89,17 @@ class QbitClient {
   }
 
   private async request(path: string, init?: RequestInit, retry = true): Promise<Response> {
-    if (!this.sid) await this.login();
+    if (!this.cookie) await this.login();
     const headers = new Headers(init?.headers);
     headers.set("Referer", this.host);
-    if (this.sid) headers.set("Cookie", `SID=${this.sid}`);
+    if (this.cookie) headers.set("Cookie", this.cookie);
     const response = await fetch(`${this.host}${path}`, {
       ...init,
       headers,
       signal: init?.signal ?? AbortSignal.timeout(30_000),
     });
     if (response.status === 403 && retry) {
-      this.sid = "";
+      this.cookie = "";
       await this.login();
       return this.request(path, init, false);
     }
@@ -96,7 +109,7 @@ class QbitClient {
   async test(): Promise<{ ok: boolean; message: string; latencyMs: number }> {
     const started = Date.now();
     try {
-      this.sid = "";
+      this.cookie = "";
       await this.login();
       const response = await this.request("/api/v2/app/version");
       const version = (await response.text()).trim();
