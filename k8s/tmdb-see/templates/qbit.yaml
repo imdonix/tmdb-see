@@ -1,0 +1,158 @@
+{{- if .Values.qbit.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qbittorrent-seed
+  labels:
+    app.kubernetes.io/name: qbittorrent
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+data:
+  qbit-seed-config.py: |-
+{{ .Files.Get "files/qbit-seed-config.py" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qbittorrent
+  labels:
+    app.kubernetes.io/name: qbittorrent
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: qbittorrent
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: qbittorrent
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      automountServiceAccountToken: false
+      # Give running torrents time to flush before the pod is replaced.
+      terminationGracePeriodSeconds: 1800
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: seed-credentials
+          image: {{ .Values.qbit.image }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - python3
+            - /seed/qbit-seed-config.py
+          env:
+            - name: QBIT_CONFIG
+              value: /config/qBittorrent/config/qBittorrent.conf
+            - name: QBIT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: QBIT_USER
+                  optional: true
+            - name: QBIT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: QBIT_PASS
+                  optional: true
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: seed
+              mountPath: /seed
+              readOnly: true
+      containers:
+        - name: qbittorrent
+          image: {{ .Values.qbit.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: webui
+              containerPort: 8080
+              protocol: TCP
+            - name: torrent-tcp
+              containerPort: 6881
+              protocol: TCP
+            - name: torrent-udp
+              containerPort: 6881
+              protocol: UDP
+          env:
+            - name: QBT_LEGAL_NOTICE
+              value: confirm
+            - name: QBT_WEBUI_PORT
+              value: "8080"
+            - name: QBT_TORRENTING_PORT
+              value: "6881"
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+          startupProbe:
+            httpGet:
+              path: /
+              port: webui
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:
+            httpGet:
+              path: /
+              port: webui
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: webui
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.qbit.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: downloads
+              mountPath: /downloads
+      volumes:
+        - name: config
+          hostPath:
+            path: {{ .Values.qbit.configPath }}
+            type: DirectoryOrCreate
+        - name: downloads
+          hostPath:
+            path: {{ .Values.qbit.downloadsPath }}
+            type: DirectoryOrCreate
+        - name: seed
+          configMap:
+            name: qbittorrent-seed
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qbittorrent
+  labels:
+    app.kubernetes.io/name: qbittorrent
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: webui
+      protocol: TCP
+    - name: torrent-tcp
+      port: 6881
+      targetPort: torrent-tcp
+      protocol: TCP
+    - name: torrent-udp
+      port: 6881
+      targetPort: torrent-udp
+      protocol: UDP
+  selector:
+    app.kubernetes.io/name: qbittorrent
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

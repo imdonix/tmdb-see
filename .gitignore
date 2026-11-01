@@ -17,5 +17,7 @@ coverage/
 .DS_Store
 *.log
 *.tsbuildinfo
+__pycache__/
+*.pyc
 k8s/tmdb-see/secrets/
 k8s/secrets/

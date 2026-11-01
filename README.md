@@ -70,7 +70,6 @@ Requirements:
 - Docker + Compose
 - TMDB API key ([themoviedb.org → Settings → API](https://www.themoviedb.org/settings/api))
 - nCore account + an [ncore-go](https://github.com/imdonix/ncore) compatible API, or a Torznab endpoint
-- qBittorrent Web UI
 
 ```bash
 cp .env.example .env
@@ -88,8 +87,11 @@ Open:
 
 - TMDB proxy with widget: `http://localhost:8080`
 - See dashboard: `http://localhost:8080/see`
+- qBittorrent Web UI (bundled): `http://localhost:1002`
 
 The Compose stack starts an `ncore` API, qBittorrent and See. See's SQLite database lives in the named `see-data` volume; qBittorrent config/downloads live in `./tmp`. To inspect or back up the database, use `docker compose cp see:/app/data ./see-data-backup` or `docker run --rm -v tmdb-see_see-data:/data alpine tar -C /data -czf - . > see-data.tar.gz`.
+
+The bundled qBittorrent uses `qbittorrentofficial/qbittorrent-nox`. That image has no credential environment variables, so `k8s/tmdb-see/files/qbit-seed-config.py` writes a PBKDF2 hash made from `QBIT_USER`/`QBIT_PASS` into the qBittorrent config before the server starts. See and the Web UI therefore share the same credentials from the first boot — no temporary password to copy from the logs.
 
 > The first boot seeds provider and integration settings from environment variables. After that, use **Settings** in the dashboard. Secrets are encrypted at rest.
 
@@ -278,8 +280,8 @@ It is deliberately close to the old `ncore-tmdb` chart:
 - same default Secret name `ncore-tmdb-secrets`;
 - same secret keys `TMDB_API_KEY`, `NCORE_USER`, `NCORE_PASS`, `QBIT_USER`, `QBIT_PASS`;
 - optional `OLLAMA_API_KEY` and `APP_SECRET`;
-- optional bundled nCore deployment;
-- external qBittorrent, addressed by `env.qbitHost`.
+- bundled nCore deployment at `ncore:8080`;
+- bundled `qbittorrentofficial/qbittorrent-nox` at `qbittorrent:8080`, with credentials seeded from the same Secret.
 
 Create the Secret once (reusing the old one works):
 
@@ -299,7 +301,6 @@ Install:
 ```bash
 helm upgrade --install tmdb-see k8s/tmdb-see \
   --namespace default \
-  --set env.qbitHost=http://qbittorrent:8080 \
   --set ingress.host=tmdb.local
 ```
 
@@ -330,6 +331,12 @@ ingress:
 ncore:
   enabled: false   # when you already run ncore-go elsewhere
   image: imdonix/ncore:latest
+
+qbit:
+  enabled: false   # when you already run qBittorrent elsewhere
+  image: qbittorrentofficial/qbittorrent-nox:latest
+  configPath: /mnt/hdd/qbit-config
+  downloadsPath: /mnt/hdd/downloads
 ```
 
 The chart includes:
@@ -339,16 +346,23 @@ The chart includes:
 - startup/readiness/liveness probes against `/api/health`;
 - non-root UID 1000, read-only root filesystem, `/tmp` emptyDir, dropped capabilities;
 - one Ingress for the whole host;
-- only the essential image/env/persistence/ingress/ncore values.
+- optional bundled nCore and qBittorrent deployments;
+- only the essential image/env/persistence/ingress/ncore/qbit values.
+
+The bundled qBittorrent runs as `qbittorrentofficial/qbittorrent-nox` and stores
+state/downloads on the host paths in `qbit.configPath` and
+`qbit.downloadsPath`. An init container writes a PBKDF2 hash derived from the
+Secret's `QBIT_USER`/`QBIT_PASS` into the WebUI config, so See can log in
+immediately and no temporary password appears in the logs.
 
 **The chart is fixed at 1 replica.** SQLite is single-writer and the follow scanner runs in-process.
 
 ### Switching from `ncore-tmdb`
 
 1. Reuse the existing `ncore-tmdb-secrets`.
-2. Point `env.ncoreHost`/`env.qbitHost` at the same services.
-3. Install this chart. The dashboard is `/see`; `/ncore` redirects.
-4. If your old release also deployed `ncore` and you want the chart's bundled copy, leave `ncore.enabled=true`; otherwise disable it and keep the existing service.
+2. Install this chart. The dashboard is `/see`; `/ncore` redirects.
+3. If your old release also deployed `ncore` and you want the chart's bundled copy, leave `ncore.enabled=true`; otherwise disable it and keep the existing service.
+4. The chart can also run qBittorrent (`qbit.enabled=true`, the default). Remove any old qBittorrent Deployment/Service named `qbittorrent` from the same namespace first, or set `qbit.enabled=false` and keep pointing `env.qbitHost` at the old instance. The bundled copy reuses `/mnt/hdd/qbit-config` and `/mnt/hdd/downloads`, so the existing queue and files carry over.
 5. The SQLite schema is new. Existing follows are not imported automatically. The queue in qBittorrent is unaffected, and new releases can be picked up by re-following the shows.
 
 ---
@@ -437,6 +451,7 @@ apps/widget/          React widget library, Shadow DOM, injected by the proxy
 packages/shared/      Shared types and formatters
 packages/ui/          shadcn-style primitives shared by dashboard and widget
 k8s/tmdb-see/        Kubernetes Helm chart
+k8s/tmdb-see/files/  qBittorrent credential seeding used by Helm and Compose
 scripts/smoke.ts      End-to-end fake-provider test
 ```
 

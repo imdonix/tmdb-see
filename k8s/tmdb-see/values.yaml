@@ -29,6 +29,22 @@ ncore:
   enabled: true
   image: imdonix/ncore:latest
 
+# Bundled qBittorrent-nox. Its WebUI credentials come from the
+# existingSecret keys QBIT_USER / QBIT_PASS, which See reads too.
+qbit:
+  enabled: true
+  image: qbittorrentofficial/qbittorrent-nox:latest
+  # Host paths for qBittorrent state and downloads.
+  configPath: /mnt/hdd/qbit-config
+  downloadsPath: /mnt/hdd/downloads
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
 resources:
   requests:
     cpu: 50m
