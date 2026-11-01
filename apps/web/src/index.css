@@ -1,0 +1,123 @@
+@import "@fontsource-variable/inter";
+@import "tailwindcss";
+
+@source "../../../packages/ui/src";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.75rem;
+  --background: oklch(0.985 0.003 160);
+  --foreground: oklch(0.18 0.012 170);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.012 170);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.012 170);
+  --primary: oklch(0.62 0.14 162);
+  --primary-foreground: oklch(0.98 0.01 160);
+  --secondary: oklch(0.955 0.008 165);
+  --secondary-foreground: oklch(0.22 0.012 170);
+  --muted: oklch(0.955 0.008 165);
+  --muted-foreground: oklch(0.48 0.016 170);
+  --accent: oklch(0.945 0.014 165);
+  --accent-foreground: oklch(0.2 0.014 170);
+  --destructive: oklch(0.58 0.21 25);
+  --border: oklch(0.9 0.01 165);
+  --input: oklch(0.9 0.01 165);
+  --ring: oklch(0.62 0.14 162);
+}
+
+.dark {
+  --background: oklch(0.145 0.016 168);
+  --foreground: oklch(0.945 0.012 160);
+  --card: oklch(0.185 0.018 168);
+  --card-foreground: oklch(0.945 0.012 160);
+  --popover: oklch(0.195 0.018 168);
+  --popover-foreground: oklch(0.945 0.012 160);
+  --primary: oklch(0.78 0.15 162);
+  --primary-foreground: oklch(0.19 0.035 165);
+  --secondary: oklch(0.235 0.02 168);
+  --secondary-foreground: oklch(0.93 0.012 160);
+  --muted: oklch(0.225 0.017 168);
+  --muted-foreground: oklch(0.69 0.018 165);
+  --accent: oklch(0.26 0.025 168);
+  --accent-foreground: oklch(0.95 0.012 160);
+  --destructive: oklch(0.67 0.2 25);
+  --border: oklch(0.29 0.018 168);
+  --input: oklch(0.31 0.02 168);
+  --ring: oklch(0.78 0.15 162);
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply bg-background;
+    color-scheme: dark;
+  }
+  html:not(.dark) {
+    color-scheme: light;
+  }
+  body {
+    @apply min-h-dvh bg-background font-sans text-foreground antialiased;
+    background-image:
+      radial-gradient(ellipse 75% 46% at 50% -12%, color-mix(in oklab, var(--primary) 15%, transparent), transparent),
+      radial-gradient(ellipse 50% 35% at 94% 4%, color-mix(in oklab, oklch(0.7 0.13 210) 8%, transparent), transparent);
+    background-attachment: fixed;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 35%, transparent);
+  }
+}
+
+@layer utilities {
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent) transparent;
+  }
+  .thin-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
+  }
+  .page-glow {
+    background-image:
+      radial-gradient(ellipse 75% 46% at 50% -12%, color-mix(in oklab, var(--primary) 15%, transparent), transparent),
+      radial-gradient(ellipse 50% 35% at 94% 4%, color-mix(in oklab, oklch(0.7 0.13 210) 8%, transparent), transparent);
+  }
+}

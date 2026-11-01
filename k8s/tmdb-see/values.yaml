@@ -1,0 +1,38 @@
+image:
+  repository: imdonix/tmdb-see
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Reuse the existing ncore-tmdb Secret. Recognised keys:
+# TMDB_API_KEY, NCORE_USER, NCORE_PASS, QBIT_USER, QBIT_PASS,
+# OLLAMA_API_KEY, APP_SECRET
+existingSecret: ncore-tmdb-secrets
+
+env:
+  ncoreHost: http://ncore:8080
+  qbitHost: http://qbittorrent:8080
+  # Base downloads path. See creates Movies/ and TV Shows/ beneath it.
+  qbitSavePath: /downloads
+  qbitOrganize: "true"
+
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+
+ingress:
+  enabled: true
+  className: traefik
+  host: tmdb.local
+
+ncore:
+  enabled: true
+  image: imdonix/ncore:latest
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

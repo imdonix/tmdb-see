@@ -1,0 +1,24 @@
+See is installed.
+
+Dashboard (through the proxy):
+  http://{{ .Values.ingress.host }}/see
+
+TMDB proxy with the widget:
+  http://{{ .Values.ingress.host }}/
+
+Before first use:
+  1. Ensure the Secret "{{ .Values.existingSecret }}" exists with the keys you need
+     (TMDB_API_KEY, NCORE_USER, NCORE_PASS, QBIT_USER, QBIT_PASS, optional
+     OLLAMA_API_KEY and APP_SECRET). Missing integrations can be added in Settings.
+  2. Open Settings in the dashboard and configure providers, AI, and qBittorrent.
+
+{{- if .Values.persistence.enabled }}
+SQLite data is stored on PVC {{ include "tmdb-see.fullname" . }}-data at /app/data.
+Keep replicas at 1: the follow scheduler is in-process and SQLite is single-writer.
+{{- else }}
+Persistence is disabled. Follows and settings will be lost when the pod restarts.
+{{- end }}
+
+{{- if .Values.ncore.enabled }}
+Bundled ncore-go service: ncore:8080
+{{- end }}

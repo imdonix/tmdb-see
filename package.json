@@ -1,0 +1,37 @@
+{
+  "name": "tmdb-see",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "scripts": {
+    "dev": "bun run scripts/dev.ts",
+    "dev:server": "bun --watch apps/server/src/index.ts",
+    "dev:web": "bun --cwd apps/web dev",
+    "dev:widget": "bun --cwd apps/widget dev",
+    "build": "bun run build:widget && bun run build:web",
+    "build:web": "bun --cwd apps/web build",
+    "build:widget": "bun --cwd apps/widget build",
+    "start": "bun apps/server/src/index.ts",
+    "test": "bun test",
+    "smoke": "bun run scripts/smoke.ts",
+    "typecheck": "bun run typecheck:shared && bun run typecheck:ui && bun run typecheck:server && bun run typecheck:web && bun run typecheck:widget",
+    "typecheck:shared": "bunx tsc -p packages/shared/tsconfig.json --noEmit",
+    "typecheck:ui": "bunx tsc -p packages/ui/tsconfig.json --noEmit",
+    "typecheck:server": "bunx tsc -p apps/server/tsconfig.json --noEmit",
+    "typecheck:web": "bunx tsc -p apps/web/tsconfig.json --noEmit",
+    "typecheck:widget": "bunx tsc -p apps/widget/tsconfig.json --noEmit",
+    "helm:lint": "helm lint k8s/tmdb-see",
+    "helm:template": "helm template tmdb-see k8s/tmdb-see"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.9.0"
+  }
+}

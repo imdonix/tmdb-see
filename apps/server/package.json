@@ -1,0 +1,19 @@
+{
+  "name": "@tmdb-see/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts"
+  },
+  "dependencies": {
+    "@tmdb-see/shared": "workspace:*",
+    "fast-xml-parser": "^5.2.5",
+    "hono": "^4.9.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0"
+  }
+}
