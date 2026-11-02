@@ -93,6 +93,19 @@ Missing values can be configured in the dashboard after startup.
 `APP_SECRET` is recommended; without it See creates `DATA_DIR/secret.key` on
 the PVC.
 
+## API key
+
+The API is protected by a single key. On first start See generates it in
+`/app/data/api-key` and prints it to the logs on every boot:
+
+```bash
+kubectl -n tmdb-see logs deploy/tmdb-see | grep 'See API key'
+```
+
+Set `SEE_API_KEY` as an extra env var to pin your own value instead. The TMDB
+proxy pages stay public; the dashboard, widget, and every `/api/*` route
+require the key.
+
 ## Bundled qBittorrent
 
 `qbit.enabled=true` deploys `qbittorrentofficial/qbittorrent-nox` with:

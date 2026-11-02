@@ -161,6 +161,33 @@ Environment values only **seed the database on first boot**. Later changes belon
 | `DISABLE_SCHEDULER` | `false` | Disable background follow and download-tracking loops. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`. |
 | `CURL_BIN` | `curl` | Override the TMDB proxy transport binary. |
+| `SEE_API_KEY` | generated | Single key that protects every `/api/*` route. When unset, See creates `DATA_DIR/api-key` and prints the key on every start. |
+
+### Authentication
+
+See uses a single API key. It is generated on first boot (or pinned with
+`SEE_API_KEY`) and printed to the logs on every start:
+
+```text
+See API key: 6ZoQ...8Ln
+```
+
+The TMDB proxy pages stay public and keep working without it. Everything that
+touches providers, qBittorrent, follows, settings, or AI is protected:
+
+- dashboard and widget: sign in with the key; the browser stores it in
+  `localStorage` under `see.apiKey`
+- scripts: `Authorization: Bearer <key>` or `X-API-Key: <key>`
+- anchor downloads: `?key=<key>`
+
+`GET /api/health` and `POST /api/auth/verify` stay unauthenticated so container
+probes and the login handshake keep working. `GET /api/auth/session` validates a
+stored key.
+
+On TMDB pages the header shows **See - Login** until you enter the key in the
+popup, then switches to **See - Dashboard**. The injected widget shows the same
+login card. The dashboard renders a login screen for anonymous visitors; use
+**Sign out** in the sidebar to forget the key.
 
 ### Providers
 
@@ -424,7 +451,7 @@ Shared request/response types live in `packages/shared/src/types.ts`.
 - Data directory: `DATA_DIR` (default `./data`), file `see.db` in WAL mode, database file mode `0600`.
 - Secrets in SQLite (provider configs, qBittorrent password, TMDB/Ollama keys) use AES-256-GCM.
 - If `APP_SECRET` is unset, a random 32-byte key is created at `DATA_DIR/secret.key` with mode `0600`. **Losing this file makes stored secrets unreadable.**
-- The dashboard/API has no built-in login, matching the predecessor. Put the ingress behind your normal auth middleware or keep it on a trusted network. The API can add/delete qBittorrent torrents and change provider credentials.
+- The dashboard, widget, and every `/api/*` route require the single API key printed at startup (or `SEE_API_KEY`). The TMDB proxy pages themselves stay public. The key is stored as `DATA_DIR/api-key` with mode `0600` when generated.
 - Torznab downloads are host-restricted by default to prevent SSRF; enable external download hosts only deliberately.
 - The TMDB proxy strips CSP and frames so the widget can run, and neutralizes TMDB service workers with a self-unregistering `/sw.js`.
 - qBittorrent and nCore credentials never reach the browser.

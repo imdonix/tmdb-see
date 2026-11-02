@@ -1,6 +1,7 @@
 import { app } from "./app";
 import { config } from "./config";
 import { closeDatabase } from "./db";
+import { apiKey } from "./lib/auth";
 import { logger } from "./lib/logger";
 import { providerManager } from "./providers/manager";
 import { startSchedulers, stopSchedulers } from "./services/scheduler";
@@ -34,6 +35,7 @@ const server = Bun.serve({
 
 startSchedulers();
 
+logger.info(`See API key: ${apiKey}`);
 logger.info("See is listening", {
   url: `http://${config.host}:${server.port}`,
   dataDir: config.dataDir,

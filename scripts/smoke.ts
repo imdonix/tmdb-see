@@ -16,6 +16,7 @@ process.env.APP_SECRET = "smoke-test-secret";
 process.env.QBIT_SAVE_PATH = "/downloads";
 process.env.QBIT_ORGANIZE = "true";
 process.env.TMDB_API_KEY = "smoke-tmdb-key";
+process.env.SEE_API_KEY = "smoke-api-key";
 process.env.LOG_LEVEL = "warn";
 
 const torrentBytes = new TextEncoder().encode("d8:announce13:http://trackere");
@@ -289,7 +290,11 @@ async function call(pathname: string, init?: RequestInit) {
   const response = await app.fetch(
     new Request(`http://localhost${pathname}`, {
       ...init,
-      headers: { "content-type": "application/json", ...init?.headers },
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": process.env.SEE_API_KEY ?? "",
+        ...init?.headers,
+      },
     }),
   );
   const text = await response.text();
@@ -308,6 +313,29 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 try {
+  const unauthorized = await app.fetch(new Request("http://localhost/api/overview"));
+  assert(unauthorized.status === 401, "API should reject requests without a key");
+  const wrongKey = await app.fetch(
+    new Request("http://localhost/api/auth/verify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ apiKey: "wrong" }),
+    }),
+  );
+  assert(wrongKey.status === 401, "verify should reject a wrong key");
+  const verified = await call("/api/auth/verify", {
+    method: "POST",
+    body: JSON.stringify({ apiKey: process.env.SEE_API_KEY }),
+  });
+  assert(verified.ok, "verify should accept the startup key");
+  const queryKey = await app.fetch(
+    new Request(`http://localhost/api/overview?key=${process.env.SEE_API_KEY}`),
+  );
+  assert(queryKey.ok, "query-string key should be accepted");
+  const publicHealth = await app.fetch(new Request("http://localhost/api/health"));
+  assert(publicHealth.ok, "health must stay public for probes");
+  console.log("auth: API protected by the startup key");
+
   const ncoreProvider = await call("/api/providers", {
     method: "POST",
     body: JSON.stringify({

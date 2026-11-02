@@ -34,6 +34,7 @@ export const config = {
   dbPath: path.join(dataDir, "see.db"),
   publicDir: path.resolve(env("PUBLIC_DIR", defaultPublic)),
   appSecret: env("APP_SECRET"),
+  apiKey: env("SEE_API_KEY").trim(),
   tmdb: {
     origin: "https://www.themoviedb.org",
     apiBase: env("TMDB_API_BASE", "https://api.themoviedb.org/3"),

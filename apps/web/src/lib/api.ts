@@ -22,6 +22,7 @@ import type {
   TorrentDetail,
   TorrentItem,
 } from "@tmdb-see/shared";
+import { AUTH_INVALID_EVENT, getApiKey } from "./auth";
 
 export class ApiError extends Error {
   status: number;
@@ -36,13 +37,18 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const apiKey = getApiKey();
   const response = await fetch(`/api${path}`, {
     ...init,
     headers: {
       ...(init?.body ? { "content-type": "application/json" } : {}),
+      ...(apiKey ? { "x-api-key": apiKey } : {}),
       ...init?.headers,
     },
   });
+  if (response.status === 401) {
+    window.dispatchEvent(new Event(AUTH_INVALID_EVENT));
+  }
   const text = await response.text();
   let payload: unknown = null;
   if (text) {
@@ -64,11 +70,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function torrentFileUrl(providerId: string, torrentId: string): string {
-  return `/api/torrents/${encodeURIComponent(providerId)}/${encodeURIComponent(torrentId)}/file`;
+  const key = getApiKey();
+  const base = `/api/torrents/${encodeURIComponent(providerId)}/${encodeURIComponent(torrentId)}/file`;
+  return key ? `${base}?key=${encodeURIComponent(key)}` : base;
 }
 
 export const api = {
   health: () => request<HealthResponse>("/health"),
+  session: () => request<{ ok: boolean }>("/auth/session"),
+  verifyKey: (apiKey: string) =>
+    request<{ ok: boolean }>("/auth/verify", { method: "POST", body: JSON.stringify({ apiKey }) }),
   overview: () => request<OverviewResponse>("/overview"),
   events: (limit = 50) => request<{ events: AppEvent[] }>(`/events?limit=${limit}`),
 

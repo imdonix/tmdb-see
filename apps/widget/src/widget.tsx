@@ -25,6 +25,7 @@ import type {
 import { formatBytes, formatEta, formatPercent, formatRelative, formatSpeed, qbitStateLabel } from "@tmdb-see/shared";
 import { Badge } from "@tmdb-see/ui/badge";
 import { Button } from "@tmdb-see/ui/button";
+import { Input } from "@tmdb-see/ui/input";
 import { Progress } from "@tmdb-see/ui/progress";
 import { cn } from "@tmdb-see/ui/utils";
 
@@ -37,14 +38,43 @@ const QUALITY_STYLES: Record<string, string> = {
   Auto: "border-primary/30 bg-primary/10 text-primary",
 };
 
+const API_KEY_STORAGE = "see.apiKey";
+const AUTH_EVENT = "see:auth";
+const AUTH_INVALID_EVENT = "see:auth-invalid";
+
+function storedApiKey(): string {
+  try {
+    return localStorage.getItem(API_KEY_STORAGE) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function storeApiKey(value: string): void {
+  try {
+    localStorage.setItem(API_KEY_STORAGE, value);
+  } catch {
+    // storage can be blocked; the current render still works
+  }
+}
+
 async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const apiKey = storedApiKey();
   const response = await fetch(path, {
     ...init,
     headers: {
       ...(init?.body ? { "content-type": "application/json" } : {}),
+      ...(apiKey ? { "x-api-key": apiKey } : {}),
       ...init?.headers,
     },
   });
+  if (response.status === 401) {
+    try {
+      window.dispatchEvent(new Event(AUTH_INVALID_EVENT));
+    } catch {
+      // ignore
+    }
+  }
   const text = await response.text();
   let payload: unknown = null;
   if (text) {
@@ -110,6 +140,12 @@ function Shell({
           <div className="truncate text-[13px] font-semibold leading-tight">{title}</div>
           {subtitle && <div className="truncate text-[10px] text-muted-foreground">{subtitle}</div>}
         </div>
+        <a
+          href="/see"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-background/30 px-1.5 py-1 text-[10px] font-medium text-muted-foreground transition hover:border-primary/30 hover:text-primary"
+        >
+          See - Dashboard <ExternalLink className="size-3" />
+        </a>
         <a
           href={href}
           className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-muted-foreground transition hover:text-primary"
@@ -813,13 +849,135 @@ function FollowPanel({ tmdbId }: { tmdbId: string }) {
   );
 }
 
+function WidgetLogin({ onAuthenticated }: { onAuthenticated: () => void }) {
+  const [value, setValue] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const key = value.trim();
+    if (!key) {
+      setError("Enter the API key from the See server logs.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await getJson<{ ok: boolean }>("/api/auth/verify", {
+        method: "POST",
+        body: JSON.stringify({ apiKey: key }),
+      });
+      storeApiKey(key);
+      window.dispatchEvent(new CustomEvent(AUTH_EVENT, { detail: { authenticated: true } }));
+      onAuthenticated();
+    } catch (caught) {
+      setError(errorText(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="see-widget overflow-hidden rounded-xl border border-border/90 bg-gradient-to-b from-card/95 to-background/95 shadow-[0_18px_50px_-24px_rgba(0,0,0,.8)] backdrop-blur">
+      <div className="flex min-h-11 items-center gap-2 border-b border-border/70 px-3.5 py-2.5">
+        <BrandMark />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-semibold leading-tight">See - Login</div>
+          <div className="truncate text-[10px] text-muted-foreground">Unlock the widget and dashboard.</div>
+        </div>
+        <a
+          href="/see"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-muted-foreground transition hover:text-primary"
+        >
+          Dashboard <ExternalLink className="size-3" />
+        </a>
+      </div>
+      <form onSubmit={(event) => void submit(event)} className="space-y-2 p-3.5">
+        <label
+          htmlFor="see-widget-key"
+          className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+        >
+          API key
+        </label>
+        <Input
+          id="see-widget-key"
+          type="password"
+          autoComplete="current-password"
+          spellCheck={false}
+          placeholder="Paste your API key"
+          className="h-8 font-mono text-[11px]"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+        />
+        {error && (
+          <div className="rounded-md border border-red-400/30 bg-red-400/10 px-2 py-1.5 text-[10px] text-red-200">
+            {error}
+          </div>
+        )}
+        <Button type="submit" size="sm" className="w-full" disabled={busy}>
+          {busy ? <Loader2 className="animate-spin" /> : null} Sign in
+        </Button>
+        <p className="text-[9px] leading-relaxed text-muted-foreground/80">
+          The key is printed in the See logs as <code className="font-mono">See API key: …</code>
+        </p>
+      </form>
+    </div>
+  );
+}
+
 export function Widget({ contentType, tmdbId }: { contentType: string; tmdbId: string }) {
+  const [auth, setAuth] = React.useState<"checking" | "anonymous" | "authenticated">(() =>
+    storedApiKey() ? "checking" : "anonymous",
+  );
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const check = () => {
+      const key = storedApiKey();
+      if (!key) {
+        setAuth("anonymous");
+        return;
+      }
+      setAuth("checking");
+      fetch("/api/auth/session", { headers: { "x-api-key": key } })
+        .then((response) => {
+          if (!cancelled) setAuth(response.ok ? "authenticated" : "anonymous");
+        })
+        .catch(() => {
+          if (!cancelled) setAuth("anonymous");
+        });
+    };
+    check();
+    const onAuth = () => check();
+    const onInvalid = () => setAuth("anonymous");
+    window.addEventListener(AUTH_EVENT, onAuth);
+    window.addEventListener(AUTH_INVALID_EVENT, onInvalid);
+    window.addEventListener("storage", onAuth);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(AUTH_EVENT, onAuth);
+      window.removeEventListener(AUTH_INVALID_EVENT, onInvalid);
+      window.removeEventListener("storage", onAuth);
+    };
+  }, []);
+
   if (!tmdbId) {
     return (
       <div className="see-widget rounded-xl border border-red-400/30 bg-card p-4 text-xs text-red-200">
         Missing widget config. Open this page through the See TMDB proxy.
       </div>
     );
+  }
+  if (auth === "checking") {
+    return (
+      <div className="see-widget flex items-center gap-2 rounded-xl border border-border/90 bg-card/80 px-3.5 py-4 text-[11px] text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin" /> Checking your session…
+      </div>
+    );
+  }
+  if (auth === "anonymous") {
+    return <WidgetLogin onAuthenticated={() => setAuth("authenticated")} />;
   }
   if (contentType === "tv") return <FollowPanel tmdbId={tmdbId} />;
   return <MoviePanel tmdbId={tmdbId} />;

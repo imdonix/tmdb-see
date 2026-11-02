@@ -3,12 +3,14 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   ArrowDownToLine,
   LayoutDashboard,
+  LogOut,
   Menu,
   Search,
   Settings2,
   Tv,
 } from "lucide-react";
 import { Button, Sheet, SheetContent, SheetHeader, SheetTitle, cn } from "@tmdb-see/ui";
+import { logout } from "@/lib/auth";
 import { Brand, BrandMark } from "./brand";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -69,6 +71,16 @@ function DesktopSidebar() {
       <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4 thin-scrollbar">
         <NavItems />
       </div>
+      <div className="border-t border-border/60 p-3">
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-muted-foreground hover:text-foreground"
+          onClick={logout}
+        >
+          <LogOut className="size-4" />
+          Sign out
+        </Button>
+      </div>
     </aside>
   );
 }
@@ -95,6 +107,19 @@ function MobileHeader() {
           </SheetHeader>
           <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
             <NavItems onNavigate={() => setOpen(false)} />
+          </div>
+          <div className="border-t border-border/60 p-3">
+            <Button
+              variant="ghost"
+              className="w-full justify-start text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setOpen(false);
+                logout();
+              }}
+            >
+              <LogOut className="size-4" />
+              Sign out
+            </Button>
           </div>
         </SheetContent>
       </Sheet>

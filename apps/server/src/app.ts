@@ -3,8 +3,10 @@ import path from "node:path";
 import { Hono } from "hono";
 import { config } from "./config";
 import { ApiError } from "./lib/errors";
+import { extractApiKey, isValidApiKey } from "./lib/auth";
 import { logger } from "./lib/logger";
 import { killSwitchServiceWorker, proxyTmdb } from "./services/proxy";
+import { authRoute } from "./routes/auth";
 import { healthRoute } from "./routes/health";
 import { overviewRoute } from "./routes/overview";
 import { eventsRoute } from "./routes/events";
@@ -82,6 +84,21 @@ app.use("*", async (c, next) => {
   }
 });
 
+// The TMDB proxy and the dashboard shell stay public, but every data API
+// needs the key printed at startup. Health stays open for container probes,
+// and /api/auth/verify is the login handshake itself.
+const PUBLIC_API_PATHS = new Set(["/api/health", "/api/auth/verify"]);
+
+app.use("/api/*", async (c, next) => {
+  if (PUBLIC_API_PATHS.has(c.req.path)) return next();
+  const key = extractApiKey(c.req.raw.headers, new URL(c.req.url));
+  if (!isValidApiKey(key)) {
+    return c.json({ error: "Authentication required" }, 401);
+  }
+  return next();
+});
+
+app.route("/api/auth", authRoute);
 app.route("/api/health", healthRoute);
 app.route("/api/overview", overviewRoute);
 app.route("/api/events", eventsRoute);
