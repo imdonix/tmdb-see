@@ -11,6 +11,7 @@ export const QBIT_STATE_LABELS: Record<string, string> = {
   missingFiles: "Missing files",
   uploading: "Seeding",
   pausedUP: "Paused (seed)",
+  stoppedUP: "Paused (seed)",
   queuedUP: "Queued (seed)",
   stalledUP: "Stalled (seed)",
   checkingUP: "Checking (seed)",
@@ -19,6 +20,7 @@ export const QBIT_STATE_LABELS: Record<string, string> = {
   downloading: "Downloading",
   metaDL: "Fetching metadata",
   pausedDL: "Paused",
+  stoppedDL: "Paused",
   queuedDL: "Queued",
   stalledDL: "Stalled",
   checkingDL: "Checking",
@@ -93,12 +95,27 @@ export function qbitStateLabel(state: string): string {
   return QBIT_STATE_LABELS[state] ?? state.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
+/**
+ * qBittorrent < 5 reports paused torrents as `pausedDL`/`pausedUP`; 5.x uses
+ * `stoppedDL`/`stoppedUP`.
+ */
+export function isQbitPaused(state?: string | null): boolean {
+  const value = state ?? "";
+  return value.startsWith("paused") || value.startsWith("stopped");
+}
+
 export function isQbitComplete(torrent: { progress?: number; state?: string }): boolean {
   if (["error", "missingFiles"].includes(torrent.state ?? "")) return false;
   if ((torrent.progress ?? 0) >= 0.999) return true;
-  return ["uploading", "pausedUP", "queuedUP", "stalledUP", "forcedUP", "checkingUP"].includes(
-    torrent.state ?? "",
-  );
+  return [
+    "uploading",
+    "pausedUP",
+    "stoppedUP",
+    "queuedUP",
+    "stalledUP",
+    "forcedUP",
+    "checkingUP",
+  ].includes(torrent.state ?? "");
 }
 
 export function tmdbImage(path?: string | null, size: "w185" | "w342" | "w500" | "original" = "w342"): string | null {

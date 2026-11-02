@@ -23,6 +23,7 @@ import {
   formatPercent,
   formatSpeed,
   isQbitComplete,
+  isQbitPaused,
   qbitStateLabel,
 } from "@tmdb-see/shared";
 import {
@@ -108,7 +109,7 @@ function DeleteDialog({
 function TorrentCard({ torrent }: { torrent: QbitTorrent }) {
   const queryClient = useQueryClient();
   const complete = isQbitComplete(torrent);
-  const paused = torrent.state.startsWith("paused");
+  const paused = isQbitPaused(torrent.state);
   const href =
     torrent.ref?.providerId && torrent.ref?.torrentId
       ? `/torrents/${encodeURIComponent(torrent.ref.providerId)}/${encodeURIComponent(torrent.ref.torrentId)}`
@@ -275,12 +276,14 @@ export function DownloadsPage() {
   const torrents = query.data?.torrents ?? [];
   const filtered = torrents.filter((torrent) => {
     if (search && !torrent.name.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filter === "active") return !isQbitComplete(torrent);
+    if (filter === "active") return !isQbitComplete(torrent) && !isQbitPaused(torrent.state);
     if (filter === "complete") return isQbitComplete(torrent);
-    if (filter === "paused") return torrent.state.startsWith("paused");
+    if (filter === "paused") return isQbitPaused(torrent.state);
     return true;
   });
-  const active = torrents.filter((torrent) => !isQbitComplete(torrent));
+  const active = torrents.filter(
+    (torrent) => !isQbitComplete(torrent) && !isQbitPaused(torrent.state),
+  );
   const totalDown = torrents.reduce((total, torrent) => total + torrent.dlspeed, 0);
   const totalUp = torrents.reduce((total, torrent) => total + torrent.upspeed, 0);
 
@@ -336,7 +339,7 @@ export function DownloadsPage() {
                   Complete {torrents.filter((torrent) => isQbitComplete(torrent)).length}
                 </TabsTrigger>
                 <TabsTrigger value="paused">
-                  Paused {torrents.filter((torrent) => torrent.state.startsWith("paused")).length}
+                  Paused {torrents.filter((torrent) => isQbitPaused(torrent.state)).length}
                 </TabsTrigger>
               </TabsList>
             </Tabs>

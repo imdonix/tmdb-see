@@ -1,5 +1,5 @@
 import type { OverviewResponse } from "@tmdb-see/shared";
-import { isQbitComplete } from "@tmdb-see/shared";
+import { isQbitComplete, isQbitPaused } from "@tmdb-see/shared";
 import { config } from "../config";
 import { listFollowRows, followCounts } from "../db/follows";
 import { providerManager } from "../providers/manager";
@@ -49,9 +49,20 @@ export async function getOverview(): Promise<OverviewResponse> {
   }));
 
   const completed = enriched.filter((torrent) => isQbitComplete(torrent));
-  const active = enriched.filter((torrent) => !isQbitComplete(torrent));
+  const active = enriched.filter(
+    (torrent) => !isQbitComplete(torrent) && !isQbitPaused(torrent.state),
+  );
   const queued = enriched.filter((torrent) =>
-    ["queuedDL", "queuedUP", "pausedDL", "pausedUP", "stalledDL", "stalledUP"].includes(torrent.state),
+    [
+      "queuedDL",
+      "queuedUP",
+      "pausedDL",
+      "pausedUP",
+      "stoppedDL",
+      "stoppedUP",
+      "stalledDL",
+      "stalledUP",
+    ].includes(torrent.state),
   );
 
   const followRows = listFollowRows();
