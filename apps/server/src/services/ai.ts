@@ -88,7 +88,7 @@ For each torrent release title, decide whether it is genuinely the requested mov
 Rules:
 - Match the exact title. Reject sequels, prequels, spin-offs, remakes, documentaries about the title, and unrelated films with similar words.
 - If the target has a year and the release title contains a different year, reject it. Numbers that are part of the title (for example "1917" or "Blade Runner 2049") are not years.
-- For TV: an episode release must match the requested season and episode. A full season pack matches any episode in that season. Reject other seasons.
+- For TV: an episode release must match the requested season and episode. A full season pack matches any episode in that season. A multi-season or complete-series pack (for example S01-S04 or Complete Series) matches every episode in its seasons. Reject releases for other seasons.
 - A release title may contain extra technical tags, release-group names, language markers, and resolution markers. Those are fine.
 - Reject compilations and multi-movie packs unless they explicitly contain only the requested title.
 - Quality alone is never a reason to reject a correct title.

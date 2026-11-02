@@ -41,6 +41,14 @@ export function seriesSavePath(name: string, year: string, season: number): stri
 }
 
 /**
+ * Series root. Multi-season packs keep their own season structure, so they are
+ * not flattened into a single season folder.
+ */
+export function seriesRootSavePath(name: string, year: string): string {
+  return `${SERIES_LIBRARY_FOLDER}/${seriesFolderName(name, year)}`;
+}
+
+/**
  * A per-episode folder inside the season directory. Jellyfin supports an
  * episode folder containing one or more versions of that episode, and this
  * keeps separate torrents from overwriting shared sample/subtitle names.

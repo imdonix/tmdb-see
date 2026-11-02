@@ -6,6 +6,7 @@ import {
   seasonFolderName,
   seriesEpisodeFolderName,
   seriesFolderName,
+  seriesRootSavePath,
   seriesSavePath,
 } from "./naming";
 
@@ -27,6 +28,9 @@ describe("Jellyfin naming", () => {
     );
     expect(seriesEpisodeFolderName("The Office", "2005", 2, 3)).toBe(
       "The Office (2005) S02E03",
+    );
+    expect(seriesRootSavePath("Mr. Robot", "2015")).toBe(
+      "TV Shows/Mr. Robot (2015)",
     );
   });
 

@@ -35,13 +35,13 @@ import { ApiError } from "../lib/errors";
 import { logger } from "../lib/logger";
 import { providerManager } from "../providers/manager";
 import type { ProviderTorrent } from "../providers/types";
-import { parseEpisodeFromTitle } from "../utils/episode";
+import { parseEpisodeFromTitle, seasonPackLabel } from "../utils/episode";
 import {
   buildSeriesSearchPattern,
   matchesQuality,
   titleLooksLikeSeries,
 } from "../utils/media";
-import { seriesEpisodeFolderName, seriesSavePath } from "../utils/naming";
+import { seriesEpisodeFolderName, seriesRootSavePath, seriesSavePath } from "../utils/naming";
 import { buildQbitTags, torrentFilename } from "../utils/qbit-tags";
 import { autoVerify, isVerified, shouldAutoVerify } from "./ai";
 import { recordEvent } from "./events";
@@ -59,6 +59,8 @@ import { getSeriesDetails } from "./tmdb";
 interface Candidate {
   torrent: ProviderTorrent;
   season: number;
+  /** Inclusive last season; equals `season` for single-season candidates. */
+  seasonEnd: number;
   episode: number;
   seeders: number;
 }
@@ -525,11 +527,17 @@ async function grabRelease(
   season: number,
   episode: number,
   ai: AiMatch | null,
+  seasonEnd = season,
 ): Promise<FollowItemRow> {
   const adapter = providerManager.getAdapter(torrent.providerId);
   if (!adapter) throw new Error("Provider is no longer available");
   const download = await adapter.download(torrent);
-  const seasonPath = seriesSavePath(follow.name, follow.year ?? "", season);
+  // A pack spanning several seasons carries its own season structure, so it is
+  // saved at the series root instead of being flattened into the first season.
+  const multiSeasonPack = episode === 0 && seasonEnd > season;
+  const seasonPath = multiSeasonPack
+    ? seriesRootSavePath(follow.name, follow.year ?? "")
+    : seriesSavePath(follow.name, follow.year ?? "", season);
   const episodeFolder =
     episode > 0 ? seriesEpisodeFolderName(follow.name, follow.year ?? "", season, episode) : undefined;
   await addToQbit({
@@ -630,6 +638,13 @@ export async function checkFollow(followId: number): Promise<FollowCheckResult> 
 
     const skipped = new Set(followSummary(refreshed).skippedSeasons);
     const seasons = details?.seasons ?? [];
+    const latestSeason = seasons.reduce(
+      (max, season) =>
+        season.season_number >= 1 && season.episode_count > 0
+          ? Math.max(max, season.season_number)
+          : max,
+      1,
+    );
     const done = new Set<string>();
     const seasonPackDone = new Set<number>();
     const keyOf = (season: number, episode: number) => `${season}:${episode}`;
@@ -675,9 +690,18 @@ export async function checkFollow(followId: number): Promise<FollowCheckResult> 
       const parsed = parseEpisodeFromTitle(torrent.title);
       if (!parsed) continue;
       result.matched += 1;
+      const seasonEnd =
+        parsed.episode === 0
+          ? Math.max(
+              parsed.season,
+              parsed.seasonEnd ?? parsed.season,
+              parsed.complete ? latestSeason : parsed.season,
+            )
+          : parsed.season;
       const candidate: Candidate = {
         torrent,
         season: parsed.season,
+        seasonEnd,
         episode: parsed.episode,
         seeders: torrent.seeders,
       };
@@ -696,7 +720,12 @@ export async function checkFollow(followId: number): Promise<FollowCheckResult> 
 
     const bestPack = new Map<number, Candidate>();
     for (const candidate of packs) {
-      if (!bestPack.has(candidate.season)) bestPack.set(candidate.season, candidate);
+      const existing = bestPack.get(candidate.season);
+      // A complete-series pack deserves preference over a single-season pack
+      // for the same starting season, but never let a dead torrent win.
+      if (!existing || (candidate.seasonEnd > existing.seasonEnd && candidate.seeders > 0)) {
+        bestPack.set(candidate.season, candidate);
+      }
     }
     const bestEpisode = new Map<string, Candidate>();
     for (const candidate of episodes) {
@@ -761,15 +790,28 @@ export async function checkFollow(followId: number): Promise<FollowCheckResult> 
     // 1) Season packs. Remove individual episode torrents/files before adding
     // the pack, otherwise flattening both onto the same season folder can
     // delete files that the pack itself uses. Removed episodes stay retriable
-    // if the pack cannot be queued.
-    for (const [season, candidate] of bestPack) {
-      if (skipped.has(season) || seasonPackDone.has(season)) {
+    // if the pack cannot be queued. A complete-series pack (S01-S04) covers
+    // every season in its range and is stored at the series root.
+    const orderedPacks = [...bestPack.values()].sort(
+      (a, b) => a.season - b.season || b.seasonEnd - a.seasonEnd,
+    );
+    for (const candidate of orderedPacks) {
+      const coveredSeasons: number[] = [];
+      for (let season = candidate.season; season <= candidate.seasonEnd; season += 1) {
+        if (!skipped.has(season)) coveredSeasons.push(season);
+      }
+      if (coveredSeasons.length === 0) {
+        result.alreadyHave += 1;
+        continue;
+      }
+      const remainingSeasons = coveredSeasons.filter((season) => !seasonPackDone.has(season));
+      if (remainingSeasons.length === 0) {
         result.alreadyHave += 1;
         continue;
       }
       if (!allowed(candidate)) continue;
-      const missing = seasonHasMissingEpisodes(season, items, seasons);
-      const individuals = seasonIndividualReleases(season, items);
+      const missing = remainingSeasons.some((season) => seasonHasMissingEpisodes(season, items, seasons));
+      const individuals = remainingSeasons.flatMap((season) => seasonIndividualReleases(season, items));
       if (!missing && individuals.length === 0) continue;
 
       const verdict = verdicts.get(`${candidate.torrent.providerId}:${candidate.torrent.id}`) ?? null;
@@ -785,24 +827,38 @@ export async function checkFollow(followId: number): Promise<FollowCheckResult> 
           done.delete(keyOf(item.season, item.episode));
         }
       }
+      const label = seasonPackLabel(candidate.season, candidate.seasonEnd);
       try {
-        const packItem = await grabRelease(refreshed, candidate.torrent, season, 0, verdict);
+        const packItem = await grabRelease(
+          refreshed,
+          candidate.torrent,
+          candidate.season,
+          0,
+          verdict,
+          candidate.seasonEnd,
+        );
         result.scheduled += 1;
-        seasonPackDone.add(season);
         if (individuals.length > 0) result.upgraded += 1;
-        markEpisodesCoveredBy(refreshed.id, season, packItem.id);
-        for (const item of items) {
-          if (item.season === season && item.episode > 0) done.add(keyOf(season, item.episode));
+        for (const season of remainingSeasons) {
+          seasonPackDone.add(season);
+          markEpisodesCoveredBy(refreshed.id, season, packItem.id);
+          for (const item of items) {
+            if (item.season === season && item.episode > 0) done.add(keyOf(season, item.episode));
+          }
         }
-        recordEvent("success", "follow", `Season pack queued for ${refreshed.name} S${String(season).padStart(2, "0")}`, {
+        recordEvent("success", "follow", `Season pack queued for ${refreshed.name} ${label}`, {
           title: candidate.torrent.title,
           provider: providerName(candidate.torrent.providerId),
         });
       } catch (error) {
-        logger.warn("Could not grab season pack", { season, error: String(error) });
+        logger.warn("Could not grab season pack", {
+          season: candidate.season,
+          seasonEnd: candidate.seasonEnd,
+          error: String(error),
+        });
         upsertFollowItemRow({
           followId: refreshed.id,
-          season,
+          season: candidate.season,
           episode: 0,
           status: "failed",
           providerId: candidate.torrent.providerId,
@@ -810,7 +866,7 @@ export async function checkFollow(followId: number): Promise<FollowCheckResult> 
           torrentTitle: candidate.torrent.title,
           aiJson: verdict ? JSON.stringify(verdict) : null,
         });
-        recordEvent("error", "follow", `Season pack failed for ${refreshed.name} S${String(season).padStart(2, "0")}`, {
+        recordEvent("error", "follow", `Season pack failed for ${refreshed.name} ${label}`, {
           error: error instanceof Error ? error.message : String(error),
         });
       }

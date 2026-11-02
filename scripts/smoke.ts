@@ -105,11 +105,14 @@ const ncore = Bun.serve({
     if (url.pathname === "/search") {
       const body = (await request.json()) as { pattern?: string };
       const pattern = (body.pattern ?? "").toLowerCase();
+      const isPack = pattern.includes("pack show");
       const isSeries = pattern.includes("test show");
-      const id = isSeries ? "201" : "101";
-      const title = isSeries
-        ? "Test.Show.S01E01.1080p.WEB-DL.x264-SMOKE"
-        : "Fight.Club.1999.1080p.BluRay.x264-SMOKE";
+      const id = isPack ? "301" : isSeries ? "201" : "101";
+      const title = isPack
+        ? "Pack.Show.S01-S03.COMPLETE.1080p.BluRay.x264-SMOKE"
+        : isSeries
+          ? "Test.Show.S01E01.1080p.WEB-DL.x264-SMOKE"
+          : "Fight.Club.1999.1080p.BluRay.x264-SMOKE";
       return Response.json({
         Torrents: [
           {
@@ -117,7 +120,7 @@ const ncore = Bun.serve({
             Title: title,
             Key: "key",
             Size: "1.2 GiB",
-            Type: isSeries ? "hdser" : "hd",
+            Type: isSeries || isPack ? "hdser" : "hd",
             Date: new Date().toISOString(),
             Seeders: 42,
             Leechers: 3,
@@ -128,17 +131,19 @@ const ncore = Bun.serve({
         NumOfPages: 1,
       });
     }
-    if (url.pathname === "/torrent/101" || url.pathname === "/torrent/201") {
-      const id = url.pathname.endsWith("201") ? "201" : "101";
+    if (url.pathname === "/torrent/101" || url.pathname === "/torrent/201" || url.pathname === "/torrent/301") {
+      const id = url.pathname.endsWith("301") ? "301" : url.pathname.endsWith("201") ? "201" : "101";
       const title =
-        id === "201"
-          ? "Test.Show.S01E01.1080p.WEB-DL.x264-SMOKE"
-          : "Fight.Club.1999.1080p.BluRay.x264-SMOKE";
+        id === "301"
+          ? "Pack.Show.S01-S03.COMPLETE.1080p.BluRay.x264-SMOKE"
+          : id === "201"
+            ? "Test.Show.S01E01.1080p.WEB-DL.x264-SMOKE"
+            : "Fight.Club.1999.1080p.BluRay.x264-SMOKE";
       return Response.json({
         ID: id,
         Title: title,
         Size: "1.2 GiB",
-        Type: id === "201" ? "hdser" : "hd",
+        Type: id === "101" ? "hd" : "hdser",
         Date: new Date().toISOString(),
         Seeders: 42,
         Leechers: 3,
@@ -146,7 +151,11 @@ const ncore = Bun.serve({
         URL: `${self}/torrents.php?action=details&id=${id}`,
       });
     }
-    if (url.pathname === "/torrent/101/download" || url.pathname === "/torrent/201/download") {
+    if (
+      url.pathname === "/torrent/101/download" ||
+      url.pathname === "/torrent/201/download" ||
+      url.pathname === "/torrent/301/download"
+    ) {
       return new Response(torrentBytes, { headers: { "content-type": "application/x-bittorrent" } });
     }
     return new Response("not found", { status: 404 });
@@ -212,6 +221,19 @@ const tmdb = Bun.serve({
         seasons: [
           { season_number: 0, episode_count: 2, name: "Specials" },
           { season_number: 1, episode_count: 2, name: "Season 1", air_date: "2020-01-01" },
+        ],
+      });
+    }
+    if (url.pathname === "/tv/1400") {
+      return Response.json({
+        id: 1400,
+        name: "Pack Show",
+        first_air_date: "2019-01-01",
+        poster_path: "/pack-show.jpg",
+        seasons: [
+          { season_number: 1, episode_count: 2, name: "Season 1", air_date: "2019-01-01" },
+          { season_number: 2, episode_count: 2, name: "Season 2", air_date: "2020-01-01" },
+          { season_number: 3, episode_count: 2, name: "Season 3", air_date: "2021-01-01" },
         ],
       });
     }
@@ -410,6 +432,36 @@ try {
     "follow item was not tracked",
   );
   console.log("follow check: episode grabbed with Jellyfin layout");
+
+  const packFollow = await call("/api/follows", {
+    method: "POST",
+    body: JSON.stringify({ tmdbId: 1400, quality: "1080p" }),
+  });
+  assert(packFollow.follow.name === "Pack Show", "complete-pack follow creation failed");
+  const packCheck = await call("/api/follows/1400/check", { method: "POST" });
+  assert(packCheck.result.scheduled === 1, `complete-pack check scheduled ${packCheck.result.scheduled}`);
+  assert(added.length === 5, "qBittorrent did not receive the complete pack");
+  const packTorrent = added[4];
+  assert(
+    packTorrent.savePath === "/downloads/TV Shows/Pack Show (2019)",
+    `complete-pack save path mismatch: ${packTorrent.savePath}`,
+  );
+  assert(packTorrent.contentLayout === "NoSubfolder", "complete pack should keep its own layout");
+  assert(packTorrent.rename === "", "complete pack should not be renamed");
+  assert(packTorrent.tags.includes("season:1"), "complete-pack season tag missing");
+  const packDetail = await call("/api/follows/1400");
+  for (const season of [1, 2, 3]) {
+    for (const episode of [1, 2]) {
+      const item = packDetail.items.find(
+        (candidate: any) => candidate.season === season && candidate.episode === episode,
+      );
+      assert(
+        item?.status === "completed" && item?.coveredBy,
+        `complete pack did not cover S${season}E${episode}`,
+      );
+    }
+  }
+  console.log("complete pack: S01-S03 saved at series root and covers every season");
 
   await call("/api/settings", {
     method: "PATCH",
